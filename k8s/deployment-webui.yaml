@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: open-webui
+  namespace: llm-devops
+  labels:
+    app: open-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: open-webui
+  template:
+    metadata:
+      labels:
+        app: open-webui
+    spec:
+      initContainers:
+        - name: wait-for-ollama
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - until wget -q --spider http://ollama:11434/api/version; do echo waiting for ollama; sleep 5; done
+      containers:
+        - name: open-webui
+          image: ghcr.io/open-webui/open-webui:main
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: webui-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          volumeMounts:
+            - name: webui-storage
+              mountPath: /app/backend/data
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: webui-storage
+          persistentVolumeClaim:
+            claimName: webui-pvc
